@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #6853ad;
+  --color-brand-dark: #584591;
+  --color-brand-soft: #837798;
+  --color-canvas: #f4f3ef;
+  --color-ink: #282a30;
+  --color-muted: #85808c;
+  --color-line: #e5e2e7;
+}
+
+@layer base {
+  body { @apply m-0 bg-canvas font-sans text-ink antialiased; }
+  button { @apply cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-[13px] font-medium transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50; }
+  :is(button, a, input, select):focus-visible { @apply outline-2 outline-offset-2 outline-violet-400; }
+  input, select { @apply w-full min-w-0 rounded-lg border border-line bg-white p-2.5 text-[13px] text-ink; }
+  input::placeholder { @apply text-stone-400; }
+  label { @apply flex flex-col gap-2 text-xs font-medium text-stone-600; }
+  form { @apply mt-4 flex flex-col gap-4; }
+  h2 { @apply text-base font-semibold tracking-tight; }
+  h3 { @apply text-sm font-semibold; }
+}
