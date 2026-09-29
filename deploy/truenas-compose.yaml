@@ -1,0 +1,30 @@
+services:
+  room-replay:
+    image: room-replay:0.2.0
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    user: "568:568"
+    environment:
+      TZ: Europe/Bratislava
+    ports:
+      - "192.0.2.10:3000:3000"
+    volumes:
+      - type: bind
+        source: /mnt/tank/room-replay
+        target: /data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

@@ -43,3 +43,11 @@ The active PV017 recording continued during these checks; the server was not res
 - Full specification checks for scheduling, retention, saved progress, and tailnet deployment after those features are implemented.
 
 Player update: the read-only browser checks passed in Chromium and Brave for speed buttons, arrow-key seeking and speed changes, and saved position after refresh and reopening. Start over is removed. Artifacts: `/tmp/cesnet-controls-zangO5`. Svelte check and the production build passed. Progress currently uses browser-local storage.
+
+## TrueNAS custom app, 2026-09-29
+
+Built `room-replay:0.1.0` from the multistage Dockerfile and started it locally with a writable data mount. Transferred the 198 MiB compressed image to TrueNAS; local and remote SHA-256 matched. Created the `tank/room-replay` dataset through the TrueNAS API with a 100 GiB quota and UID/GID 568, then installed the app through `app.create`. TrueNAS reported one running container bound to `192.0.2.10:3000`. The tailnet API returned five rooms, seven subjects, and zero recordings. The app did not answer on `192.0.2.20:3000`. Brave and Chromium passed a narrow-screen UI smoke check over the tailnet.
+
+## Weekly scheduler, 2026-09-29
+
+Added Europe/Bratislava weekly windows for the FI subjects with configured room streams. Rust tests cover start/end boundaries, the October daylight-saving change, missing FAST streams, and persistence that prevents a duplicate occurrence after restart. `cargo test` passed eight tests and `cargo clippy --all-targets -- -D warnings` passed. Built `room-replay:0.2.0`, transferred and checksum-verified its archive, and updated the TrueNAS custom app through `app.update`. TrueNAS reported the new image running. Today's PV017 recording retained its original ID and grew after the update, confirming restart recovery. The NAS recording was started manually as a bridge before the scheduler update; the next scheduled occurrence will use the scheduler.

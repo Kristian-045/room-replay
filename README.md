@@ -2,7 +2,7 @@
 
 A personal CESNET DVR built with Rust, Svelte, TypeScript, and Tailwind CSS.
 
-This is the first working recording/playback slice. It saves rooms, records one room at a time, and lets you watch a recording while capture continues. FFmpeg copies the source audio/video into HLS segments; the browser uses hls.js.
+The app saves rooms, records one room at a time, starts configured FI classes from the weekly timetable, and lets you watch a recording while capture continues. FFmpeg copies the source audio/video into HLS segments; the browser uses hls.js.
 
 ## Run locally
 
@@ -20,7 +20,7 @@ Your seven timetable subjects are preloaded separately from rooms. Choose a subj
 
 Select a room and an end time, then choose Record now. Watch becomes available after FFmpeg publishes the first complete segment.
 
-The user's [weekly timetable](docs/timetable.md) is recorded for the scheduling implementation. Its entries do not trigger automatic capture yet; FAST sources remain deferred.
+The [weekly timetable](docs/timetable.md) automatically starts the four FI subjects in Europe/Bratislava time and stops at their listed end times. Starting the app during a class captures the remaining time. The app retries an unavailable stream until the end, and records a No stream history entry if no footage arrives. FAST subjects remain visible but cannot run until their stream links are configured. The timetable is preloaded and cannot yet be edited in the UI.
 
 The player restores its saved position and offers seeking, 0.5x through 2x playback with −/+ buttons, and Go live. With a player button focused, left/right arrows seek five seconds and up/down arrows change speed. Refreshing reopens the last recording, paused at its saved position. Progress is stored in this browser and does not sync between devices. Controls sit inside the video and remain available in fullscreen. Move the pointer, tap, or focus a control to reveal them during playback. Accelerated playback returns to 1x within eight seconds of the captured live edge. This margin is an initial implementation value to validate with real lectures.
 
@@ -32,12 +32,12 @@ For frontend development, run `cargo run` and `npm --prefix web run dev` in sepa
 
 ## Current limits
 
-- Weekly scheduling, storage-cap enforcement and automatic cleanup, Keep protection, recording deletion controls, and cross-device playback progress are not implemented yet.
+- Editable timetable entries, storage-cap enforcement and automatic cleanup, Keep protection, recording deletion controls, and cross-device playback progress are not implemented yet.
 - Only one application instance should use a data directory. Multi-process coordination and abrupt-process-death handling need hardening before unattended deployment.
-- The manual end-time field uses the browser's timezone and currently limits a recording to the next 24 hours. Weekly schedules will use Europe/Bratislava as specified.
-- No application login is provided. The development server binds to loopback. Tailnet-only deployment has not yet been configured or verified.
+- The manual end-time field uses the browser's timezone and currently limits a recording to the next 24 hours. Weekly schedules use Europe/Bratislava.
+- No application login is provided. The TrueNAS deployment binds only to its Tailscale IP. The local development server binds to loopback.
 - Local generated-stream tests do not replace testing a live CESNET lecture, long recordings, or Brave on an Android device.
-- No Docker deployment is supplied at this stage. Container packaging follows the playback validation and scheduling/storage work.
+- The first manual-recording build runs as a custom app on TrueNAS at http://192.0.2.10:3000 over the tailnet. See [TrueNAS deployment](docs/truenas-deployment.md).
 
 ## Configuration
 

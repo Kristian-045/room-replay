@@ -1,6 +1,7 @@
 use crate::{
     library::{Library, Phase, Recording, RecordingId},
     rooms::{Room, RoomId},
+    schedule,
     subjects::{Subject, SubjectId},
 };
 use anyhow::{Context, Result, bail};
@@ -201,38 +202,7 @@ impl Worker {
                 subject_id,
             } => {
                 validate_end(ends_at)?;
-                if self.active.is_some() {
-                    bail!("Another recording is already active");
-                }
-                let room = self
-                    .library
-                    .rooms()?
-                    .into_iter()
-                    .find(|room| room.id == room_id)
-                    .context("Room not found")?;
-                let mut recording = Recording {
-                    id: RecordingId(Uuid::new_v4()),
-                    room_id,
-                    title: room.name.clone(),
-                    room_name: room.name,
-                    subject_id: None,
-                    source_url: room.stream_url,
-                    started_at: now(),
-                    ends_at,
-                    phase: Phase::Waiting,
-                    incomplete: false,
-                    playable: false,
-                    duration: 0.0,
-                    message: Some("Waiting for the first complete segment".into()),
-                };
-                self.library.assign_subject(&mut recording, subject_id)?;
-                self.active = Some(Active {
-                    recording,
-                    child: None,
-                    attempt: 0,
-                    retry_at: now(),
-                    last_progress_at: now(),
-                });
+                self.start_recording(room_id, ends_at, subject_id, None)?;
             }
             Action::Stop(id) => {
                 if self.active.as_ref().map(|active| active.recording.id) != Some(id) {
@@ -259,6 +229,94 @@ impl Worker {
                 self.library.save_recording(&active.recording)?;
             }
             Action::Shutdown => self.shutdown().await?,
+        }
+        Ok(())
+    }
+
+    fn start_recording(
+        &mut self,
+        room_id: RoomId,
+        ends_at: i64,
+        subject_id: Option<SubjectId>,
+        scheduled_start: Option<i64>,
+    ) -> Result<()> {
+        if self.active.is_some() {
+            bail!("Another recording is already active");
+        }
+        let room = self
+            .library
+            .rooms()?
+            .into_iter()
+            .find(|room| room.id == room_id)
+            .context("Room not found")?;
+        let current = now();
+        let mut recording = Recording {
+            id: RecordingId(Uuid::new_v4()),
+            room_id,
+            title: room.name.clone(),
+            room_name: room.name,
+            subject_id: None,
+            source_url: room.stream_url,
+            started_at: current,
+            scheduled_start,
+            ends_at,
+            phase: Phase::Waiting,
+            incomplete: scheduled_start.is_some_and(|start| current > start + 60),
+            playable: false,
+            duration: 0.0,
+            message: Some("Waiting for the first complete segment".into()),
+        };
+        // Persist the occurrence before spawning FFmpeg, so a restart or an
+        // explicit stop cannot start the same weekly slot twice.
+        self.library.assign_subject(&mut recording, subject_id)?;
+        self.active = Some(Active {
+            recording,
+            child: None,
+            attempt: 0,
+            retry_at: current,
+            last_progress_at: current,
+        });
+        Ok(())
+    }
+
+    fn start_due(&mut self, timestamp: i64) -> Result<()> {
+        if self.active.is_some() {
+            return Ok(());
+        }
+        let subjects = self.library.subjects()?;
+        let rooms = self.library.rooms()?;
+        let recordings = self.library.recordings()?;
+        for window in schedule::open_windows(&subjects, timestamp) {
+            if recordings
+                .iter()
+                .any(|recording| recording.scheduled_start == Some(window.starts_at))
+            {
+                continue;
+            }
+            // A manual recording of this subject during the window also
+            // counts as this week's occurrence.
+            if recordings.iter().any(|recording| {
+                recording.subject_id.as_ref() == Some(&window.subject_id)
+                    && recording.started_at >= window.starts_at
+                    && recording.started_at < window.ends_at
+            }) {
+                continue;
+            }
+            let Some(room) = rooms
+                .iter()
+                .find(|room| room.page_url == window.room_page_url)
+            else {
+                tracing::warn!(subject = %window.subject_id.0, "Scheduled room is missing");
+                continue;
+            };
+            tracing::info!(subject = %window.subject_id.0, "Starting scheduled recording");
+            self.start_recording(
+                room.id,
+                window.ends_at,
+                Some(window.subject_id),
+                Some(window.starts_at),
+            )?;
+            break;
         }
         Ok(())
     }
@@ -303,6 +361,7 @@ impl Worker {
         {
             return self.finish(Phase::Finished).await;
         }
+        self.start_due(now())?;
         let Some(active) = self.active.as_mut() else {
             return Ok(());
         };
@@ -417,5 +476,36 @@ async fn halt(child: &mut Option<Child>) {
             let _ = child.kill().await;
             let _ = child.wait().await;
         }
+    }
+}
+
+#[cfg(test)]
+mod schedule_tests {
+    use super::*;
+    use chrono::DateTime;
+
+    #[test]
+    fn scheduled_occurrence_is_persisted_and_not_started_twice() {
+        let temp = tempfile::tempdir().unwrap();
+        let timestamp = DateTime::parse_from_rfc3339("2026-09-29T09:20:00+02:00")
+            .unwrap()
+            .timestamp();
+        let mut first = Worker {
+            library: Library::open(temp.path()).unwrap(),
+            ffmpeg: "ffmpeg".into(),
+            active: None,
+        };
+        first.start_due(timestamp).unwrap();
+        let recording = first.active.take().unwrap().recording;
+        assert_eq!(recording.subject_id.unwrap().0, "PV017");
+        assert!(recording.scheduled_start.is_some());
+        drop(first);
+        let mut restarted = Worker {
+            library: Library::open(temp.path()).unwrap(),
+            ffmpeg: "ffmpeg".into(),
+            active: None,
+        };
+        restarted.start_due(timestamp).unwrap();
+        assert!(restarted.active.is_none());
     }
 }

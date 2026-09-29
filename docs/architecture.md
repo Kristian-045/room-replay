@@ -14,9 +14,9 @@ Propose one application process that serves browser assets, control requests, an
 
 ## Modules and ownership
 
-The first slice implements rooms, subjects, recorder, library, HTTP, and player modules. Subjects have stable course-code identities and a saved weekly slot from the user's timetable; the slot currently provides room suggestions and reference information, not automatic recording. Recordings have an optional subject identity and a room-name snapshot so removing a room does not erase their context. SQLite tracks removed room sources to prevent startup defaults from restoring user-deleted rooms.
+The first slice implements rooms, subjects, recorder, library, HTTP, and player modules. Subjects have stable course-code identities and a saved weekly slot from the user's timetable; the slot starts scheduled FI recordings in Europe/Bratislava time and provides room suggestions. Recordings have an optional subject identity and a room-name snapshot so removing a room does not erase their context. SQLite tracks removed room sources to prevent startup defaults from restoring user-deleted rooms.
 
-Timetable calculation, retention, and viewing sessions below remain planned. SQLite currently stores typed room, subject, and recording snapshots as JSON documents; indexed timetable queries will be added with scheduling. Database access is serialized inside the recorder task for this single-user slice.
+Editable timetable management, retention, and viewing sessions below remain planned. SQLite currently stores typed room, subject, and recording snapshots as JSON documents; indexed timetable queries will be added with scheduling. Database access is serialized inside the recorder task for this single-user slice.
 
 | Module | Interface responsibilities | Hidden implementation |
 | --- | --- | --- |

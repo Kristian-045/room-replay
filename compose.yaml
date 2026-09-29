@@ -1,0 +1,30 @@
+services:
+  room-replay:
+    image: room-replay:0.1.0
+    build: .
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    user: "568:568"
+    environment:
+      TZ: Europe/Bratislava
+    ports:
+      - "${DVR_HOST_IP:-127.0.0.1}:${DVR_HOST_PORT:-3000}:3000"
+    volumes:
+      - type: bind
+        source: ${DVR_HOST_DATA:?Set DVR_HOST_DATA to the persistent data directory}
+        target: /data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

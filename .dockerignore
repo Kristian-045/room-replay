@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+data
+target
+web/node_modules
+web/dist
+web/tests
+docs
+deploy
+README.md
+CONTEXT.md
+*.log

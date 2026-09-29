@@ -45,6 +45,8 @@ pub struct Recording {
     pub subject_id: Option<SubjectId>,
     pub source_url: String,
     pub started_at: i64,
+    #[serde(default)]
+    pub scheduled_start: Option<i64>,
     pub ends_at: i64,
     pub phase: Phase,
     pub incomplete: bool,
@@ -377,6 +379,7 @@ mod tests {
             subject_id: None,
             source_url: "test".into(),
             started_at: 0,
+            scheduled_start: None,
             ends_at: 10,
             phase: Phase::Recording,
             incomplete: true,
