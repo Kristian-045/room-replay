@@ -46,7 +46,7 @@ Player update: the read-only browser checks passed in Chromium and Brave for spe
 
 ## TrueNAS custom app, 2026-09-29
 
-Built `room-replay:0.1.0` from the multistage Dockerfile and started it locally with a writable data mount. Transferred the 198 MiB compressed image to TrueNAS; local and remote SHA-256 matched. Created the `tank/room-replay` dataset through the TrueNAS API with a 100 GiB quota and UID/GID 568, then installed the app through `app.create`. TrueNAS reported one running container bound to `192.0.2.10:3000`. The tailnet API returned five rooms, seven subjects, and zero recordings. The app did not answer on `192.0.2.20:3000`. Brave and Chromium passed a narrow-screen UI smoke check over the tailnet.
+Built the container image from the multistage Dockerfile and started it locally with a writable data mount. Transferred the image to TrueNAS and installed it as a custom app with persistent storage. Confirmed that the API returned the preloaded rooms and subjects, and checked the UI in Brave and Chromium over a private tailnet connection.
 
 ## Weekly scheduler, 2026-09-29
 

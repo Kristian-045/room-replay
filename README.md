@@ -2,6 +2,8 @@
 
 A personal CESNET DVR built with Rust, Svelte, TypeScript, and Tailwind CSS.
 
+Most of this project was generated with AI coding tools and then adapted for personal use. It has been exercised with generated test streams, but still needs more testing with live lectures and long recordings.
+
 The app saves rooms, records one room at a time, starts configured FI classes from the weekly timetable, and lets you watch a recording while capture continues. FFmpeg copies the source audio/video into HLS segments; the browser uses hls.js.
 
 ## Run locally
@@ -37,7 +39,7 @@ For frontend development, run `cargo run` and `npm --prefix web run dev` in sepa
 - The manual end-time field uses the browser's timezone and currently limits a recording to the next 24 hours. Weekly schedules use Europe/Bratislava.
 - No application login is provided. The TrueNAS deployment binds only to its Tailscale IP. The local development server binds to loopback.
 - Local generated-stream tests do not replace testing a live CESNET lecture, long recordings, or Brave on an Android device.
-- The first manual-recording build runs as a custom app on TrueNAS at http://192.0.2.10:3000 over the tailnet. See [TrueNAS deployment](docs/truenas-deployment.md).
+- See [TrueNAS deployment](docs/truenas-deployment.md) for an example setup.
 
 ## Configuration
 
