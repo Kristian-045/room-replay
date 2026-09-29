@@ -25,4 +25,6 @@ FI A217, A218, A318, A319, and A320 are preloaded in the app. S108 is excluded a
 
 Do not create stream URLs for FAST by guessing from FI's URL pattern. Their availability and links remain unknown.
 
+FI's [dated streaming schedule](https://video.fi.muni.cz/seznam_streamovanych_predmetu), inspected on 2026-09-28, lists PA103 and PA220 with streaming enabled and PA017/CZ with streaming disabled for the next two Wednesday occurrences. FAST source URLs are still unknown. All four FI courses are listed with streaming enabled. See [the schedule research](fi-stream-schedule.md) for exact dates, windows, and proposed integration behavior.
+
 Room links were verified against [FI's official streaming page](https://www.fi.muni.cz/tech/video.html.cs) and its linked CESNET player pages on 2026-09-28. The FI page states that streaming normally depends on the teaching timetable; saved rooms can be offline outside lectures.

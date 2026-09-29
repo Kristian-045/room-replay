@@ -14,7 +14,9 @@ Propose one application process that serves browser assets, control requests, an
 
 ## Modules and ownership
 
-The first slice implements rooms, recorder, library, HTTP, and player modules. Timetable calculation, retention, and viewing sessions below remain planned. SQLite currently stores typed room and recording snapshots as JSON documents; schema migrations and indexed timetable queries will be added with scheduling. Database access is serialized inside the recorder task for this single-user slice.
+The first slice implements rooms, subjects, recorder, library, HTTP, and player modules. Subjects have stable course-code identities and a saved weekly slot from the user's timetable; the slot currently provides room suggestions and reference information, not automatic recording. Recordings have an optional subject identity and a room-name snapshot so removing a room does not erase their context. SQLite tracks removed room sources to prevent startup defaults from restoring user-deleted rooms.
+
+Timetable calculation, retention, and viewing sessions below remain planned. SQLite currently stores typed room, subject, and recording snapshots as JSON documents; indexed timetable queries will be added with scheduling. Database access is serialized inside the recorder task for this single-user slice.
 
 | Module | Interface responsibilities | Hidden implementation |
 | --- | --- | --- |
@@ -81,6 +83,7 @@ Keep FFmpeg supervision inside recorder initially. Extract another module only w
 
 ## Design work next
 
+- Evaluate the public FI dated streaming table as evidence for per-occurrence streaming expectations. See [fi-stream-schedule.md](fi-stream-schedule.md). Missing or stale data must remain distinct from an explicit No flag.
 - Specify recording states and commands, including which module serializes admission and timetable changes to prevent recording conflicts.
 - Define ownership of persisted room settings, timetable entries, recording lifecycle metadata, media files, and viewing progress.
 - Define the HTTP interface between Rust and TypeScript, including how shared request and response types stay consistent.

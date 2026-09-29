@@ -10,13 +10,13 @@ export class Player {
   private state: PlaybackState = { speed: 1, message: '', error: '' };
   private mediaRecoveries = 0;
 
-  constructor(private video: HTMLVideoElement, url: string, private changed: (state: PlaybackState) => void) {
+  constructor(private video: HTMLVideoElement, url: string, private changed: (state: PlaybackState) => void, startPosition = 0) {
     video.preservesPitch = true;
     video.addEventListener('timeupdate', this.onTime);
     video.addEventListener('ratechange', this.onRate);
     if (Hls.isSupported()) {
       this.hls = new Hls({
-        startPosition: 0,
+        startPosition,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: Infinity,
         maxLiveSyncPlaybackRate: 1,
@@ -56,7 +56,6 @@ export class Player {
   };
 
   speed(value: number) { this.state.message = ''; this.video.playbackRate = value; this.emit(); }
-  startOver() { this.video.currentTime = 0; }
   goLive() { this.video.currentTime = livePosition(this.edge); this.video.playbackRate = 1; }
   destroy() {
     this.video.removeEventListener('timeupdate', this.onTime);

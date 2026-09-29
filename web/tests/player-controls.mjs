@@ -1,0 +1,110 @@
+// Read-only UI check against an already running app with a playable recording.
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const base = process.env.DVR_TEST_URL || 'http://127.0.0.1:3000';
+const artifacts = await mkdtemp(join(tmpdir(), 'cesnet-controls-'));
+const initial = await (await fetch(`${base}/api/state`)).json();
+const recording = initial.recordings.find(recording => recording.playable);
+assert.ok(recording, 'A playable recording is needed');
+const results = [];
+for (const executablePath of ['/usr/bin/chromium', '/usr/bin/brave']) {
+  const browser = await chromium.launch({ executablePath, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 950 } });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(base);
+    const rooms = page.locator('details').filter({ has: page.locator('summary', { hasText: /^Rooms$/ }) });
+    await rooms.waitFor();
+    assert.equal(await rooms.evaluate(element => element.open), false);
+    await rooms.locator('summary').click();
+    await rooms.getByRole('button', { name: '+ Add', exact: true }).waitFor();
+    await rooms.locator('summary').click();
+    assert.equal(await rooms.evaluate(element => element.open), false);
+    const recordingPanel = page.locator('details').filter({ has: page.locator('summary', { hasText: /^(Recording|Record now)$/ }) });
+    assert.equal(await recordingPanel.evaluate(element => element.open), false);
+    await recordingPanel.locator('summary').click();
+    assert.equal(await recordingPanel.locator('form').isVisible(), true);
+    await recordingPanel.locator('summary').click();
+    assert.equal(await recordingPanel.locator('form').isVisible(), false);
+    const filters = page.getByRole('group', { name: 'Filter by subject' });
+    await filters.getByRole('button', { name: /^PV017/ }).click();
+    assert.equal(await filters.getByRole('button', { name: /^PV017/ }).getAttribute('aria-pressed'), 'true');
+    const expected = initial.recordings.filter(item => item.subject_id === 'PV017' && (item.playable || ['recording', 'waiting', 'retrying'].includes(item.phase)));
+    assert.equal(await page.locator('[data-recording-id]').count(), expected.length);
+    await filters.getByRole('button', { name: 'All subjects', exact: true }).click();
+    await page.locator(`[data-recording-id="${recording.id}"]`).getByRole('button', { name: 'Watch', exact: true }).click();
+    const frame = page.locator('[data-player-frame]');
+    const controls = frame.locator('[data-player-controls]');
+    await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+    assert.equal(await page.locator('video').evaluate(video => video.controls), false);
+    await controls.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('video').paused);
+    await controls.getByRole('button', { name: 'Pause', exact: true }).click();
+    assert.equal(await page.locator('video').evaluate(video => video.paused), true);
+    await controls.getByRole('button', { name: 'Mute', exact: true }).click();
+    assert.equal(await page.locator('video').evaluate(video => video.muted), true);
+    await controls.getByRole('button', { name: 'Unmute', exact: true }).click();
+    await controls.getByLabel('Seek', { exact: true }).fill('10');
+    await page.waitForFunction(() => Math.abs(document.querySelector('video').currentTime - 10) < 1);
+    assert.equal(await controls.getByRole('button', { name: 'Start over', exact: true }).count(), 0);
+    await controls.getByLabel('Seek', { exact: true }).fill('0');
+    await page.waitForFunction(() => document.querySelector('video').currentTime < 1);
+    await controls.getByRole('button', { name: 'Increase speed', exact: true }).click();
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await page.locator('video').evaluate(video => video.playbackRate), 1.5);
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => Math.abs(document.querySelector('video').currentTime - 5) < 1);
+    assert.equal(await page.locator('video').evaluate(video => video.playbackRate), 1.5);
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.locator('video').evaluate(video => video.playbackRate), 1.25);
+    await controls.getByLabel('Seek', { exact: true }).fill('20');
+    await page.waitForFunction(() => Math.abs(document.querySelector('video').currentTime - 20) < 1);
+    await page.reload();
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video');
+      return video?.readyState >= 2 && Math.abs(video.currentTime - 20) < 1;
+    });
+    await page.getByRole('button', { name: 'Close player', exact: true }).click();
+    await page.locator(`[data-recording-id="${recording.id}"]`).getByRole('button', { name: 'Watch', exact: true }).click();
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video');
+      return video?.readyState >= 2 && Math.abs(video.currentTime - 20) < 1;
+    });
+    await controls.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+    await page.waitForFunction(() => document.fullscreenElement?.hasAttribute('data-player-frame'));
+    assert.equal(await page.locator(':fullscreen').getByRole('button', { name: 'Increase speed', exact: true }).count(), 1);
+    await page.locator(':fullscreen').getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+    await page.waitForFunction(() => !document.fullscreenElement);
+    await controls.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByText('Newest first', { exact: true }).click();
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-player-controls]')).opacity === '0', undefined, { timeout: 7000 });
+    await frame.hover();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-player-controls]')).opacity === '1');
+    await controls.getByRole('button', { name: 'Pause', exact: true }).click();
+    const name = executablePath.split('/').at(-1);
+    await page.screenshot({ path: join(artifacts, `${name}-desktop.png`), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await frame.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: join(artifacts, `${name}-mobile.png`), fullPage: true });
+    const inside = await controls.evaluate(element => {
+      const parent = element.closest('[data-player-frame]').getBoundingClientRect();
+      return [...element.querySelectorAll('button, select, input')].filter(item => getComputedStyle(item).display !== 'none').every(item => {
+        const box = item.getBoundingClientRect();
+        return box.left >= parent.left - 1 && box.right <= parent.right + 1 && box.top >= parent.top - 1 && box.bottom <= parent.bottom + 1;
+      });
+    });
+    assert.ok(inside, 'All visible controls must fit within the mobile player');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.deepEqual(errors, []);
+    results.push({ browser: name, passed: true });
+    console.log(`PASS ${name}: collapsed Rooms, sidebar filter, speed buttons and shortcuts, seek, refresh/reopen resume, volume, fullscreen, auto-hide, mobile fit`);
+  } finally { await browser.close(); }
+}
+await writeFile(join(artifacts, 'results.json'), JSON.stringify(results, null, 2));
+console.log(`Artifacts: ${artifacts}`);

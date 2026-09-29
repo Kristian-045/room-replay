@@ -14,11 +14,17 @@ npm --prefix web run build
 cargo run
 ```
 
-Open http://127.0.0.1:3000. FI rooms A217, A218, A318, A319, and A320 are preloaded. Startup adds missing defaults without replacing existing rooms or duplicating matching sources. You can also add a CESNET room page or a direct CESNET HLS playlist URL. Select the room and an end time, then choose Record now. Watch becomes available after FFmpeg publishes the first complete segment.
+Open http://127.0.0.1:3000. FI rooms A217, A218, A318, A319, and A320 are preloaded. You can remove rooms, including defaults; removed rooms stay removed after restart, and existing recordings are kept. A room cannot be removed while it is recording. You can also add a CESNET room page or a direct CESNET HLS playlist URL.
+
+Your seven timetable subjects are preloaded separately from rooms. Choose a subject when recording to suggest its configured FI room, or leave the recording unassigned. You can assign or change a recording's subject afterward. Filter the library by subject or Unassigned; recordings always appear newest first. FAST subjects are included, but their stream links are not configured.
+
+Select a room and an end time, then choose Record now. Watch becomes available after FFmpeg publishes the first complete segment.
 
 The user's [weekly timetable](docs/timetable.md) is recorded for the scheduling implementation. Its entries do not trigger automatic capture yet; FAST sources remain deferred.
 
-The player starts at the beginning and offers seeking, 0.5x through 2x playback, Start over, and Go live. Accelerated playback returns to 1x within eight seconds of the captured live edge. This margin is an initial implementation value to validate with real lectures.
+The player restores its saved position and offers seeking, 0.5x through 2x playback with −/+ buttons, and Go live. With a player button focused, left/right arrows seek five seconds and up/down arrows change speed. Refreshing reopens the last recording, paused at its saved position. Progress is stored in this browser and does not sync between devices. Controls sit inside the video and remain available in fullscreen. Move the pointer, tap, or focus a control to reveal them during playback. Accelerated playback returns to 1x within eight seconds of the captured live edge. This margin is an initial implementation value to validate with real lectures.
+
+The subject filter is in the sidebar. Rooms and Subjects are collapsed by default; expand Rooms to add or remove a room.
 
 Stop ends an active recording; Extend changes its deadline. Closing the browser does not stop capture. A stopped recording stays stopped after an application restart. An interrupted recording resumes within its original recording window and is marked incomplete. If no footage arrives, the attempt appears in history instead of the playable library.
 
@@ -26,7 +32,7 @@ For frontend development, run `cargo run` and `npm --prefix web run dev` in sepa
 
 ## Current limits
 
-- Weekly scheduling, storage-cap enforcement and automatic cleanup, Keep protection, deletion controls, and saved playback progress are not implemented yet.
+- Weekly scheduling, storage-cap enforcement and automatic cleanup, Keep protection, recording deletion controls, and cross-device playback progress are not implemented yet.
 - Only one application instance should use a data directory. Multi-process coordination and abrupt-process-death handling need hardening before unattended deployment.
 - The manual end-time field uses the browser's timezone and currently limits a recording to the next 24 hours. Weekly schedules will use Europe/Bratislava as specified.
 - No application login is provided. The development server binds to loopback. Tailnet-only deployment has not yet been configured or verified.
@@ -66,5 +72,7 @@ node web/tests/playback.mjs
 ```
 
 It creates a local generated live stream, records it through the actual backend, and exercises playback at 2x, seeking, catch-up, restart recovery, finalization, and a narrow viewport. It checks audio/video decoding; it cannot confirm audio quality by listening. It uses temporary data and retains logs/screenshots under the printed `/tmp/cesnet-dvr-test-*` path. Set `DVR_TEST_BROWSER` to use another Chromium-compatible executable, such as `/usr/bin/brave`.
+
+To explicitly test a currently live A318 stream against the running local app, use `DVR_LIVE_TEST=1 node web/tests/live.mjs`. This records a short real sample, tests Chromium and Brave, stops capture, and keeps the sample in the library. It refuses to start if another recording is active.
 
 See [the specification](docs/specification.md) for the full agreed scope and [the architecture](docs/architecture.md) for module responsibilities.

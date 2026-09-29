@@ -1,4 +1,5 @@
 use crate::rooms::{Room, RoomId};
+use crate::subjects::{Subject, SubjectId};
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,10 @@ pub struct Recording {
     pub id: RecordingId,
     pub room_id: RoomId,
     pub title: String,
+    #[serde(default)]
+    pub room_name: String,
+    #[serde(default)]
+    pub subject_id: Option<SubjectId>,
     pub source_url: String,
     pub started_at: i64,
     pub ends_at: i64,
@@ -62,18 +67,33 @@ impl Library {
             "PRAGMA journal_mode=WAL;
              CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, document TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS recordings (id TEXT PRIMARY KEY, document TEXT NOT NULL);
-             PRAGMA user_version=1;",
+             CREATE TABLE IF NOT EXISTS subjects (id TEXT PRIMARY KEY, document TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS removed_room_sources (url TEXT PRIMARY KEY);
+             PRAGMA user_version=2;",
         )?;
         let media = root.join("recordings");
         std::fs::create_dir_all(&media)?;
         let library = Self { db, media };
         let saved = library.rooms()?;
         for room in crate::rooms::fi_defaults() {
-            if !saved.iter().any(|existing| {
-                existing.page_url == room.page_url || existing.stream_url == room.stream_url
-            }) {
+            let removed: bool = library.db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM removed_room_sources WHERE url IN (?1, ?2))",
+                params![room.page_url, room.stream_url],
+                |row| row.get(0),
+            )?;
+            if !removed
+                && !saved.iter().any(|existing| {
+                    existing.page_url == room.page_url || existing.stream_url == room.stream_url
+                })
+            {
                 library.save_room(&room)?;
             }
+        }
+        for subject in crate::subjects::defaults() {
+            library.db.execute(
+                "INSERT OR IGNORE INTO subjects VALUES (?1, ?2)",
+                params![subject.id.0, serde_json::to_string(&subject)?],
+            )?;
         }
         Ok(library)
     }
@@ -96,14 +116,71 @@ impl Library {
         Ok(())
     }
 
+    pub fn remove_room(&mut self, id: RoomId) -> Result<()> {
+        let room = self
+            .rooms()?
+            .into_iter()
+            .find(|room| room.id == id)
+            .context("Room not found")?;
+        if self
+            .recordings()?
+            .iter()
+            .any(|recording| recording.room_id == id && recording.phase.active())
+        {
+            bail!("Stop the active recording before removing this room");
+        }
+        let transaction = self.db.transaction()?;
+        for url in [&room.page_url, &room.stream_url] {
+            transaction.execute(
+                "INSERT OR IGNORE INTO removed_room_sources VALUES (?1)",
+                [url],
+            )?;
+        }
+        transaction.execute("DELETE FROM rooms WHERE id = ?1", [id.0.to_string()])?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn subjects(&self) -> Result<Vec<Subject>> {
+        let mut statement = self
+            .db
+            .prepare("SELECT document FROM subjects ORDER BY rowid")?;
+        let documents = statement.query_map([], |row| row.get::<_, String>(0))?;
+        documents
+            .map(|doc| Ok(serde_json::from_str(&doc?)?))
+            .collect()
+    }
+
+    pub fn assign_subject(&self, recording: &mut Recording, id: Option<SubjectId>) -> Result<()> {
+        let subject = id
+            .as_ref()
+            .map(|id| {
+                self.subjects()?
+                    .into_iter()
+                    .find(|subject| &subject.id == id)
+                    .context("Subject not found")
+            })
+            .transpose()?;
+        if recording.room_name.is_empty() {
+            recording.room_name = recording.title.clone();
+        }
+        recording.title = subject
+            .map(|subject| format!("{} · {}", subject.id.0, subject.name))
+            .unwrap_or_else(|| recording.room_name.clone());
+        recording.subject_id = id;
+        self.save_recording(recording)
+    }
+
     pub fn recordings(&self) -> Result<Vec<Recording>> {
         let mut statement = self
             .db
             .prepare("SELECT document FROM recordings ORDER BY rowid DESC")?;
         let documents = statement.query_map([], |row| row.get::<_, String>(0))?;
-        documents
+        let mut recordings: Vec<Recording> = documents
             .map(|doc| Ok(serde_json::from_str(&doc?)?))
-            .collect()
+            .collect::<Result<_>>()?;
+        recordings.sort_by_key(|recording| std::cmp::Reverse(recording.started_at));
+        Ok(recordings)
     }
 
     pub fn save_recording(&self, recording: &Recording) -> Result<()> {
@@ -200,6 +277,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn removed_defaults_stay_removed_without_losing_subjects_or_recordings() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut library = Library::open(temp.path()).unwrap();
+        let room = library.rooms().unwrap().remove(0);
+        // This is the old on-disk shape: no subject_id or room_name.
+        let mut recording: Recording = serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(), "room_id": room.id, "title": room.name,
+            "source_url": room.stream_url, "started_at": 100, "ends_at": 200,
+            "phase": "recording", "incomplete": false, "playable": true,
+            "duration": 20.0, "message": null
+        }))
+        .unwrap();
+        library.save_recording(&recording).unwrap();
+        assert!(library.remove_room(room.id).is_err());
+        recording.phase = Phase::Stopped;
+        library
+            .assign_subject(&mut recording, Some(SubjectId("PV017".into())))
+            .unwrap();
+        let directory = library.directory(recording.id);
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("retained.ts"), b"recording").unwrap();
+        library.remove_room(room.id).unwrap();
+        assert!(
+            library
+                .assign_subject(&mut recording, Some(SubjectId("unknown".into())))
+                .is_err()
+        );
+        drop(library);
+        let library = Library::open(temp.path()).unwrap();
+        assert_eq!(library.rooms().unwrap().len(), 4);
+        assert!(
+            !library
+                .rooms()
+                .unwrap()
+                .iter()
+                .any(|saved| saved.stream_url == room.stream_url)
+        );
+        assert_eq!(library.subjects().unwrap().len(), 7);
+        let saved = &library.recordings().unwrap()[0];
+        assert_eq!(saved.subject_id, Some(SubjectId("PV017".into())));
+        assert_eq!(saved.room_name, room.name);
+        assert!(directory.join("retained.ts").exists());
+    }
+
+    #[test]
     fn defaults_preserve_existing_rooms_and_do_not_duplicate_on_restart() {
         let temp = tempfile::tempdir().unwrap();
         let library = Library::open(temp.path()).unwrap();
@@ -251,6 +373,8 @@ mod tests {
             id: RecordingId(Uuid::new_v4()),
             room_id: RoomId(Uuid::new_v4()),
             title: "test".into(),
+            room_name: "test".into(),
+            subject_id: None,
             source_url: "test".into(),
             started_at: 0,
             ends_at: 10,

@@ -2,6 +2,7 @@ use crate::{
     library::RecordingId,
     recorder::{Action, Recorder, Snapshot},
     rooms::{self, RoomId},
+    subjects::SubjectId,
 };
 use axum::{
     Json, Router,
@@ -24,9 +25,11 @@ pub fn router(state: AppState, media: PathBuf, frontend: PathBuf) -> Router {
     Router::new()
         .route("/api/state", get(inspect))
         .route("/api/rooms", post(save_room))
+        .route("/api/rooms/{id}/remove", post(remove_room))
         .route("/api/recordings", post(start))
         .route("/api/recordings/{id}/stop", post(stop))
         .route("/api/recordings/{id}/extend", post(extend))
+        .route("/api/recordings/{id}/subject", post(assign_subject))
         .nest_service("/media", ServeDir::new(media))
         .fallback_service(ServeDir::new(frontend))
         .layer(SetResponseHeaderLayer::overriding(
@@ -71,6 +74,7 @@ async fn save_room(State(state): State<AppState>, Json(input): Json<NewRoom>) ->
 struct Start {
     room_id: RoomId,
     ends_at: i64,
+    subject_id: Option<SubjectId>,
 }
 async fn start(State(state): State<AppState>, Json(input): Json<Start>) -> HttpResult {
     Ok(Json(
@@ -79,6 +83,35 @@ async fn start(State(state): State<AppState>, Json(input): Json<Start>) -> HttpR
             .execute(Action::Start {
                 room_id: input.room_id,
                 ends_at: input.ends_at,
+                subject_id: input.subject_id,
+            })
+            .await?,
+    ))
+}
+
+async fn remove_room(
+    State(state): State<AppState>,
+    Path(id): Path<RoomId>,
+    Json(_): Json<serde_json::Value>,
+) -> HttpResult {
+    Ok(Json(state.recorder.execute(Action::RemoveRoom(id)).await?))
+}
+
+#[derive(Deserialize)]
+struct SubjectAssignment {
+    subject_id: Option<SubjectId>,
+}
+async fn assign_subject(
+    State(state): State<AppState>,
+    Path(id): Path<RecordingId>,
+    Json(input): Json<SubjectAssignment>,
+) -> HttpResult {
+    Ok(Json(
+        state
+            .recorder
+            .execute(Action::AssignSubject {
+                id,
+                subject_id: input.subject_id,
             })
             .await?,
     ))

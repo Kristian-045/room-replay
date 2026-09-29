@@ -30,9 +30,19 @@ Status: first-version specification with interview decisions recorded. The initi
 - Preload FI A217, A218, A318, A319, and A320 using verified CESNET sources. S108 is excluded at the user's request.
 - The user's weekly classes are recorded in [timetable.md](timetable.md); FI A318 and A217 cover the four currently identified FI classes. FAST classes await source links.
 - Save rooms by name and CESNET URL.
+- Allow removing saved rooms, including preloaded rooms. Keep their recordings and remember removal across restarts. Reject removal while the room is actively recording.
 - Select a saved room for each weekly timetable entry and for Record now.
 - Change a timetable entry's room manually when a lecture moves. Automatic room discovery is outside scope.
 - Capture at most one recording at a time across all rooms.
+
+### Subjects and library layout
+
+- Store subjects independently of rooms, identified by their exact course code. Preload all seven subjects from the user's timetable, including FAST subjects whose source links are still unknown.
+- A recording can be assigned to a subject or left unassigned. Allow assignment during manual recording setup and changes afterward.
+- Filter recordings and recording history by subject, with All subjects and Unassigned options.
+- Place the subject filter in the sidebar. Rooms and Subjects are collapsed sections that can be expanded when needed.
+- Always order recordings newest first; no sort selector is needed.
+- Use a plain text application name. Omit promotional headings, taglines, development-status banners, and decorative logo glyphs.
 
 ### Recording controls
 
@@ -65,6 +75,7 @@ Status: first-version specification with interview decisions recorded. The initi
 - Save viewing progress and resume on return. The user favors this if implementation remains modest.
 - Share viewing progress across the user's devices if implementation remains modest. Concurrent playback conflict handling remains a proposed implementation default.
 - Provide Start over and Go live controls, with Go live applicable to ongoing recordings.
+- Place playback controls inside the video, including Start over, Go live, speed, play/pause, seeking, volume, and fullscreen. Keep controls available in fullscreen and on narrow screens, and hide them during playback when idle.
 
 ## Acceptance checks
 

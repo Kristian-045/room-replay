@@ -1,6 +1,7 @@
 use crate::{
     library::{Library, Phase, Recording, RecordingId},
     rooms::{Room, RoomId},
+    subjects::{Subject, SubjectId},
 };
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
@@ -26,15 +27,28 @@ pub fn now() -> i64 {
 #[derive(Serialize)]
 pub struct Snapshot {
     pub rooms: Vec<Room>,
+    pub subjects: Vec<Subject>,
     pub recordings: Vec<Recording>,
 }
 
 pub enum Action {
     Inspect,
     SaveRoom(Room),
-    Start { room_id: RoomId, ends_at: i64 },
+    RemoveRoom(RoomId),
+    AssignSubject {
+        id: RecordingId,
+        subject_id: Option<SubjectId>,
+    },
+    Start {
+        room_id: RoomId,
+        ends_at: i64,
+        subject_id: Option<SubjectId>,
+    },
     Stop(RecordingId),
-    Extend { id: RecordingId, ends_at: i64 },
+    Extend {
+        id: RecordingId,
+        ends_at: i64,
+    },
     Shutdown,
 }
 
@@ -121,6 +135,7 @@ impl Worker {
     fn snapshot(&self) -> Result<Snapshot> {
         Ok(Snapshot {
             rooms: self.library.rooms()?,
+            subjects: self.library.subjects()?,
             recordings: self.library.recordings()?,
         })
     }
@@ -161,7 +176,30 @@ impl Worker {
         match action {
             Action::Inspect => {}
             Action::SaveRoom(room) => self.library.save_room(&room)?,
-            Action::Start { room_id, ends_at } => {
+            Action::RemoveRoom(id) => self.library.remove_room(id)?,
+            Action::AssignSubject { id, subject_id } => {
+                if let Some(active) = self
+                    .active
+                    .as_mut()
+                    .filter(|active| active.recording.id == id)
+                {
+                    self.library
+                        .assign_subject(&mut active.recording, subject_id)?;
+                } else {
+                    let mut recording = self
+                        .library
+                        .recordings()?
+                        .into_iter()
+                        .find(|recording| recording.id == id)
+                        .context("Recording not found")?;
+                    self.library.assign_subject(&mut recording, subject_id)?;
+                }
+            }
+            Action::Start {
+                room_id,
+                ends_at,
+                subject_id,
+            } => {
                 validate_end(ends_at)?;
                 if self.active.is_some() {
                     bail!("Another recording is already active");
@@ -172,10 +210,12 @@ impl Worker {
                     .into_iter()
                     .find(|room| room.id == room_id)
                     .context("Room not found")?;
-                let recording = Recording {
+                let mut recording = Recording {
                     id: RecordingId(Uuid::new_v4()),
                     room_id,
-                    title: room.name,
+                    title: room.name.clone(),
+                    room_name: room.name,
+                    subject_id: None,
                     source_url: room.stream_url,
                     started_at: now(),
                     ends_at,
@@ -185,7 +225,7 @@ impl Worker {
                     duration: 0.0,
                     message: Some("Waiting for the first complete segment".into()),
                 };
-                self.library.save_recording(&recording)?;
+                self.library.assign_subject(&mut recording, subject_id)?;
                 self.active = Some(Active {
                     recording,
                     child: None,

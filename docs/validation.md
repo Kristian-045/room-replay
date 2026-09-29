@@ -1,6 +1,6 @@
 # First playback build validation
 
-Validated on 2026-09-28 using a local generated H.264/AAC live HLS source and the actual Rust server, FFmpeg recorder, and Svelte/Tailwind frontend.
+Validated on 2026-09-28 using a local generated H.264/AAC live HLS source and the actual Rust server, FFmpeg recorder, and Svelte/Tailwind frontend. Live CESNET validation was added on 2026-09-29.
 
 ## Passed
 
@@ -15,13 +15,31 @@ Validated on 2026-09-28 using a local generated H.264/AAC live HLS source and th
 - Finished playback crosses the attempt discontinuity and reaches the end at 2x.
 - Desktop and 390px-wide layouts rendered without browser exceptions or horizontal overflow. Screenshots were inspected.
 
-The test is reproducible with `node web/tests/playback.mjs` after building the backend and frontend. Temporary fixtures and screenshots from the passing run are in `/tmp/cesnet-dvr-test-80K4pU` on the development machine.
+The test is reproducible with `node web/tests/playback.mjs` after building the backend and frontend. The updated run also passed room removal, persistence of removal across restart, subject-based room selection, filtering, and reassignment of existing recordings. Its artifacts are in `/tmp/cesnet-dvr-test-mZkxMx` on the development machine. Backend tests also verify migration of older recordings and retention of recording files after removing a room.
 
-## Still needed
+## Live CESNET check, 2026-09-29
 
-- Playback against a live CESNET lecture. The example room page resolved to the expected source, but that playlist returned HTTP 404 during this session.
+The A318 HLS source was live. A short sample was captured through the running app and exercised in headless Chromium and Brave on this Linux machine. Both passed playback during capture, seeking to the beginning, 2x playback with increasing audio/video decode counters, and return to 1x near the live edge. Stop finalized the playlist with ENDLIST.
+
+- Source: https://live.cesnet.cz/munifia318.html
+- Recording ID: `88ef5514-4c65-4b05-8d7b-df0b01070b30`, retained in the local library as an unassigned sample.
+- Test: `DVR_LIVE_TEST=1 node web/tests/live.mjs`, against an already running local app with no active recording.
+- Results and screenshots: `/tmp/cesnet-live-test-ff0Mhc`.
+
+This was a short live sample, not the full lecture or an hour-long seek test.
+
+## Player controls and sidebar, 2026-09-29
+
+`node web/tests/player-controls.mjs` passed in Chromium and Brave against the running app. It makes no recording-management requests. Checks covered collapsed Rooms, the sidebar subject filter, play/pause, seeking, mute, speed selection, fullscreen with controls retained, auto-hide and pointer reveal, and control placement within a 390px-wide player. Desktop and narrow-layout screenshots were inspected at `/tmp/cesnet-controls-vlGjFQ`.
+
+The active PV017 recording continued during these checks; the server was not restarted. Svelte/TypeScript validation, the frontend production build, and player policy tests passed.
+
+## Remaining validation
+
 - Listening to audio at different speeds to assess its quality. Decode counters confirm audio processing, not subjective listening quality.
 - Long recordings, changing upstream keyframe intervals, and extended source outages.
 - Abrupt process termination, host failure, and disk-full recovery.
-- Actual Brave on Arch Linux and Android. A narrow desktop viewport is not an Android playback test.
+- Brave on a physical Android device and normal interactive playback. A narrow desktop viewport is not an Android playback test.
 - Full specification checks for scheduling, retention, saved progress, and tailnet deployment after those features are implemented.
+
+Player update: the read-only browser checks passed in Chromium and Brave for speed buttons, arrow-key seeking and speed changes, and saved position after refresh and reopening. Start over is removed. Artifacts: `/tmp/cesnet-controls-zangO5`. Svelte check and the production build passed. Progress currently uses browser-local storage.

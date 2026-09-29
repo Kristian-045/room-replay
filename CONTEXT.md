@@ -10,11 +10,14 @@ The live broadcast for a CESNET room from which recordings are captured.
 **Room**:
 A CESNET broadcast location with its own source stream.
 
+**Subject**:
+A course identified by its exact course code, such as PV017 or PA017/CZ. Recordings can belong to a subject independently of the room where they were captured.
+
 **Timetable**:
 The user's weekly recording start and end times.
 
 **Timetable entry**:
-A recurring weekly recording window for a selected room, with a start and end time.
+A recurring weekly recording window for a subject and selected room, with a start and end time.
 
 **Recording**:
 Captured content from the source stream that can be watched while capture continues or after it finishes.
