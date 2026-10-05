@@ -1,3 +1,4 @@
+mod downloads;
 pub mod http;
 pub mod library;
 pub mod recorder;

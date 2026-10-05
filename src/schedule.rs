@@ -69,6 +69,26 @@ mod tests {
     }
 
     #[test]
+    fn monday_lectures_use_a217_and_repeat_weekly() {
+        let subjects = crate::subjects::defaults();
+        for (date, offset) in [("2026-10-05", "+02:00"), ("2026-10-26", "+01:00")] {
+            for (code, start, end) in [("PV157", "08:00", "09:50"), ("PV281", "16:00", "17:50")] {
+                let windows = open_windows(&subjects, at(&format!("{date}T{start}:00{offset}")));
+                assert_eq!(windows.len(), 1, "missing Monday lecture {code}");
+                assert_eq!(windows[0].subject_id.0, code);
+                assert_eq!(
+                    windows[0].room_page_url,
+                    "https://live.cesnet.cz/munifia217.html"
+                );
+                assert_eq!(windows[0].ends_at, at(&format!("{date}T{end}:00{offset}")));
+                assert!(
+                    open_windows(&subjects, at(&format!("{date}T{end}:00{offset}"))).is_empty()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn starts_during_window_and_ends_on_time() {
         let subjects = crate::subjects::defaults();
         assert!(open_windows(&subjects, at("2026-09-29T07:59:59+02:00")).is_empty());

@@ -256,7 +256,7 @@ fn parse_segments(playlist: &str) -> Result<Vec<(f64, String)>> {
                 .next()
                 .context("Missing segment duration")?
                 .parse()?;
-            if !duration.is_finite() || duration <= 0.0 {
+            if !duration.is_finite() || duration < 0.0 {
                 bail!("Invalid segment duration");
             }
             pending = Some(duration);
@@ -268,7 +268,13 @@ fn parse_segments(playlist: &str) -> Result<Vec<(f64, String)>> {
             {
                 bail!("Unexpected segment name");
             }
-            segments.push((pending.take().context("Missing EXTINF")?, line.to_owned()));
+            let duration = pending.take().context("Missing EXTINF")?;
+            // FFmpeg can publish an empty final fragment when capture is
+            // interrupted. It contains no playback time and must not abort
+            // the entire recording or prevent subsequent retries.
+            if duration > 0.0 {
+                segments.push((duration, line.to_owned()));
+            }
         }
     }
     Ok(segments)
@@ -316,11 +322,31 @@ mod tests {
                 .iter()
                 .any(|saved| saved.stream_url == room.stream_url)
         );
-        assert_eq!(library.subjects().unwrap().len(), 7);
+        assert_eq!(library.subjects().unwrap().len(), 9);
         let saved = &library.recordings().unwrap()[0];
         assert_eq!(saved.subject_id, Some(SubjectId("PV017".into())));
         assert_eq!(saved.room_name, room.name);
         assert!(directory.join("retained.ts").exists());
+    }
+
+    #[test]
+    fn adds_monday_subjects_to_existing_library_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let library = Library::open(temp.path()).unwrap();
+        library
+            .db
+            .execute("DELETE FROM subjects WHERE id IN ('PV157', 'PV281')", [])
+            .unwrap();
+        assert_eq!(library.subjects().unwrap().len(), 7);
+        drop(library);
+        for _ in 0..2 {
+            let library = Library::open(temp.path()).unwrap();
+            let subjects = library.subjects().unwrap();
+            assert_eq!(subjects.len(), 9);
+            let windows = crate::schedule::open_windows(&subjects, 1791180000);
+            assert_eq!(windows.len(), 1);
+            assert_eq!(windows[0].subject_id.0, "PV157");
+        }
     }
 
     #[test]
@@ -392,17 +418,25 @@ mod tests {
             std::fs::create_dir_all(&path).unwrap();
             std::fs::write(
                 path.join("index.m3u8"),
-                "#EXTM3U\n#EXTINF:4.2,\nsegment000000.ts\n",
+                "#EXTM3U\n#EXTINF:4.2,\nsegment000000.ts\n#EXTINF:0.000000,\nsegment000001.ts\n#EXT-X-ENDLIST\n",
             )
             .unwrap();
         }
         library.publish(&mut rec, false).unwrap();
         assert_eq!(rec.duration, 8.4);
+        let empty_attempt = library.directory(rec.id).join("attempt-000003");
+        std::fs::create_dir_all(&empty_attempt).unwrap();
+        std::fs::write(
+            empty_attempt.join("index.m3u8"),
+            "#EXTM3U\n#EXTINF:0.000000,\nsegment000000.ts\n#EXT-X-ENDLIST\n",
+        )
+        .unwrap();
         let content =
             std::fs::read_to_string(library.directory(rec.id).join("index.m3u8")).unwrap();
         assert!(content.contains("#EXT-X-TARGETDURATION:5"));
         assert_eq!(content.matches("#EXT-X-DISCONTINUITY").count(), 1);
         assert!(!content.contains("#EXT-X-ENDLIST"));
+        assert!(!content.contains("segment000001.ts"));
         library.publish(&mut rec, true).unwrap();
         assert!(
             std::fs::read_to_string(library.directory(rec.id).join("index.m3u8"))

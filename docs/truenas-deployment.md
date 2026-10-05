@@ -5,8 +5,8 @@ This project can run as a TrueNAS custom app using the example in `deploy/truena
 Build the image on a machine with Docker:
 
 ```sh
-docker build -t room-replay:0.2.0 .
-docker save room-replay:0.2.0 | gzip > room-replay.tar.gz
+docker build -t room-replay:0.5.1 .
+docker save room-replay:0.5.1 | gzip > room-replay.tar.gz
 ```
 
 Transfer the archive to the NAS, load it with `docker load`, and create a persistent dataset for `/data`. Make that directory writable by UID/GID 568, then install the compose file as a custom app. Bind port 3000 to loopback or to a private tailnet address. Do not expose this app directly to the public internet because it has no login.

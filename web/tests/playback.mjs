@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -16,6 +17,7 @@ const children = [];
 let backend;
 let browser;
 const logs = [];
+const execute = promisify(execFile);
 const fixture = createServer(async (request, response) => {
   try {
     const name = basename(new URL(request.url, 'http://localhost').pathname);
@@ -61,6 +63,26 @@ async function api(path = '/api/state', body) {
   assert.equal(response.status, 200, JSON.stringify(value));
   return value;
 }
+async function checkDownload(page, name, id, artifact) {
+  const before = (await api()).recordings.find(recording => recording.id === id);
+  const pending = page.waitForEvent('download');
+  await page.locator(`[data-recording-id="${id}"]`).getByRole('link', { name, exact: true }).click();
+  const download = await pending;
+  assert.ok(download.suggestedFilename().endsWith('.mp4'));
+  const path = join(temporary, artifact);
+  await download.saveAs(path);
+  assert.equal(await download.failure(), null);
+  const { stdout } = await execute('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', path]);
+  const media = JSON.parse(stdout);
+  assert.ok(media.streams.some(stream => stream.codec_type === 'video'));
+  assert.ok(media.streams.some(stream => stream.codec_type === 'audio'));
+  const after = (await api()).recordings.find(recording => recording.id === id);
+  const duration = Number(media.format.duration);
+  assert.ok(duration >= before.duration - 1 && duration <= after.duration + 1, `Export duration ${duration} must match captured footage ${before.duration}–${after.duration}`);
+  const decoded = await execute('ffmpeg', ['-v', 'error', '-i', path, '-f', 'null', '-']);
+  assert.equal(decoded.stderr, '', 'Downloaded audio/video must decode without errors');
+  return after;
+}
 async function startBackend() {
   backend = launch(join(root, 'target/debug/cesnet-dvr'), [], {
     env: { ...process.env, DVR_BIND: `127.0.0.1:${port}`, DVR_DATA_DIR: join(temporary, 'data'), DVR_WEB_DIR: join(root, 'web/dist'), DVR_ALLOW_TEST_SOURCES: '1' },
@@ -77,7 +99,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base);
   assert.equal((await api()).rooms.length, 5, 'FI defaults must be preloaded');
-  assert.equal((await api()).subjects.length, 7, 'Timetable subjects must be preloaded');
+  assert.equal((await api()).subjects.length, 9, 'Timetable subjects must be preloaded');
   assert.equal(await page.getByText('On your time.', { exact: true }).count(), 0);
   assert.equal(await page.getByText('First playback build', { exact: true }).count(), 0);
   await page.locator('summary').filter({ hasText: /^Rooms$/ }).click();
@@ -108,6 +130,10 @@ try {
   assert.equal(duplicate.status, 400, 'Concurrent start must be rejected');
   state = await waitFor(async () => { const state = await api(); return state.recordings[0].duration >= 24 && state; }, '24 seconds of captured video', 60000);
   console.log('PASS: room saved, recording starts, concurrent start rejected, playlist grows');
+  const snapshotDownload = await checkDownload(page, 'Download so far', id, 'ongoing.mp4');
+  assert.equal(snapshotDownload.phase, 'recording', 'Downloading must not stop capture');
+  await waitFor(async () => (await api()).recordings[0].duration > snapshotDownload.duration, 'capture continues after downloading');
+  console.log('PASS: ongoing MP4 downloads decode and capture continues');
   await page.getByRole('button', { name: 'Watch', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -146,6 +172,8 @@ try {
   await startBackend();
   assert.equal((await api()).recordings[0].phase, 'stopped');
   await page.reload();
+  await checkDownload(page, 'Download MP4', id, 'finished.mp4');
+  console.log('PASS: finished MP4 download decodes across capture attempts');
   await page.getByRole('button', { name: 'Watch', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
   await page.evaluate(async (boundary) => { const v = document.querySelector('video'); v.currentTime = Math.max(0, boundary - 2); await v.play(); }, beforeRestart);

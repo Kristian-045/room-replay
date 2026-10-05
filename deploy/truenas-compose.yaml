@@ -1,6 +1,6 @@
 services:
   room-replay:
-    image: room-replay:0.2.0
+    image: room-replay:0.5.1
     pull_policy: never
     restart: unless-stopped
     init: true

@@ -18,15 +18,21 @@ cargo run
 
 Open http://127.0.0.1:3000. FI rooms A217, A218, A318, A319, and A320 are preloaded. You can remove rooms, including defaults; removed rooms stay removed after restart, and existing recordings are kept. A room cannot be removed while it is recording. You can also add a CESNET room page or a direct CESNET HLS playlist URL.
 
-Your seven timetable subjects are preloaded separately from rooms. Choose a subject when recording to suggest its configured FI room, or leave the recording unassigned. You can assign or change a recording's subject afterward. Filter the library by subject or Unassigned; recordings always appear newest first. FAST subjects are included, but their stream links are not configured.
+Your nine timetable subjects are preloaded separately from rooms. Choose a subject when recording to suggest its configured FI room, or leave the recording unassigned. You can assign or change a recording's subject afterward. Filter the library by subject or Unassigned; recordings always appear newest first. FAST subjects are included, but their stream links are not configured.
 
 Select a room and an end time, then choose Record now. Watch becomes available after FFmpeg publishes the first complete segment.
 
-The [weekly timetable](docs/timetable.md) automatically starts the four FI subjects in Europe/Bratislava time and stops at their listed end times. Starting the app during a class captures the remaining time. The app retries an unavailable stream until the end, and records a No stream history entry if no footage arrives. FAST subjects remain visible but cannot run until their stream links are configured. The timetable is preloaded and cannot yet be edited in the UI.
+Choose Download MP4 to save a finished, stopped, or incomplete recording to your device. For an ongoing recording, Download so far saves the complete segments available when you click; capture continues and later footage is excluded. Downloads copy the original audio and video without re-encoding. Missing footage from source interruptions remains missing. The server streams a fragmented MP4 without storing another full video. Two downloads can run at once; cancelling a download stops its export. Downloads require a new request if interrupted and cannot be resumed. Audio export currently expects AAC when audio is present. Playback requires a player that supports MP4 and the source codecs.
+
+The [weekly timetable](docs/timetable.md) automatically starts the six FI subjects in Europe/Bratislava time and stops at their listed end times. Starting the app during a class captures the remaining time. The app retries an unavailable stream until the end, and records a No stream history entry if no footage arrives. FAST subjects remain visible but cannot run until their stream links are configured. The timetable is preloaded and cannot yet be edited in the UI.
+
+Choose Light mode, Dark mode, or System theme in the header. The choice is saved in this browser.
+
+On a phone, double-tap the left or right side of the video to seek backward or forward by ten seconds. Keep tapping to seek another ten seconds per tap. A single tap shows or hides controls during playback. Use the sun button to dim the video from 100% down to 5%, including in fullscreen. This setting is saved in this browser and keeps the controls readable. It dims the video without changing your device brightness.
 
 The player restores its saved position and offers seeking, 0.5x through 2x playback with −/+ buttons, and Go live. With a player button focused, left/right arrows seek five seconds and up/down arrows change speed. Refreshing reopens the last recording, paused at its saved position. Progress is stored in this browser and does not sync between devices. Controls sit inside the video and remain available in fullscreen. Move the pointer, tap, or focus a control to reveal them during playback. Accelerated playback returns to 1x within eight seconds of the captured live edge. This margin is an initial implementation value to validate with real lectures.
 
-The subject filter is in the sidebar. Rooms and Subjects are collapsed by default; expand Rooms to add or remove a room.
+On desktop, the subject filter is in the sidebar. On mobile, tap Subjects above the recordings to open the subject sheet. Choosing a subject filters the list and closes the sheet; the button shows the selected subject. Tap All subjects to clear the filter. Rooms and Subjects are collapsed by default; expand Rooms to add or remove a room.
 
 Stop ends an active recording; Extend changes its deadline. Closing the browser does not stop capture. A stopped recording stays stopped after an application restart. An interrupted recording resumes within its original recording window and is marked incomplete. If no footage arrives, the attempt appears in history instead of the playable library.
 
@@ -74,6 +80,8 @@ node web/tests/playback.mjs
 ```
 
 It creates a local generated live stream, records it through the actual backend, and exercises playback at 2x, seeking, catch-up, restart recovery, finalization, and a narrow viewport. It checks audio/video decoding; it cannot confirm audio quality by listening. It uses temporary data and retains logs/screenshots under the printed `/tmp/cesnet-dvr-test-*` path. Set `DVR_TEST_BROWSER` to use another Chromium-compatible executable, such as `/usr/bin/brave`.
+
+For read-only control and mobile gesture checks against a running app with an existing playable recording, run `node web/tests/player-controls.mjs` and `node web/tests/mobile-player.mjs`. The mobile test needs at least forty seconds of recorded video. Set `DVR_TEST_URL` to select another app URL.
 
 To explicitly test a currently live A318 stream against the running local app, use `DVR_LIVE_TEST=1 node web/tests/live.mjs`. This records a short real sample, tests Chromium and Brave, stops capture, and keeps the sample in the library. It refuses to start if another recording is active.
 

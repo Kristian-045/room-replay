@@ -24,6 +24,24 @@ pub struct Subject {
 pub fn defaults() -> Vec<Subject> {
     [
         (
+            "PV157",
+            "Autentizace a řízení přístupu",
+            "Monday",
+            "08:00",
+            "09:50",
+            "FI A217",
+            Some("munifia217"),
+        ),
+        (
+            "PV281",
+            "Programování v Rust",
+            "Monday",
+            "16:00",
+            "17:50",
+            "FI A217",
+            Some("munifia217"),
+        ),
+        (
             "PV017",
             "Bezpečnost IT",
             "Tuesday",

@@ -1,22 +1,68 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: #6853ad;
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-selected: var(--selected);
+  --color-selection-line: var(--selection-line);
+  --color-selection-hover: var(--selection-hover);
+  --color-success-soft: var(--success-soft);
+  --color-success: var(--success);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning: var(--warning);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger: var(--danger);
+  --color-brand: var(--brand);
+  --color-action: #6853ad;
   --color-brand-dark: #584591;
   --color-brand-soft: #837798;
-  --color-canvas: #f4f3ef;
-  --color-ink: #282a30;
-  --color-muted: #85808c;
-  --color-line: #e5e2e7;
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
 }
 
+.subject-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 36rem;
+  max-height: 85dvh;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem 1.25rem 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 -12px 48px rgb(0 0 0 / 15%);
+}
+.subject-sheet[open] { display: flex; flex-direction: column; }
+.subject-sheet::backdrop { background: rgb(0 0 0 / 45%); }
+
 @layer base {
+  :root {
+    color-scheme: light;
+    --canvas: #f4f3ef; --surface: #ffffff; --ink: #282a30; --muted: #706b78; --line: #e5e2e7; --brand: #6853ad;
+    --surface-hover: #f5f5f4; --selected: #f5f3ff; --selection-line: #ddd6fe; --selection-hover: #ede9fe;
+    --success-soft: #ecfdf5; --success: #047857; --warning-soft: #fffbeb; --warning: #b45309;
+    --danger-soft: #fef2f2; --danger-line: #fecaca; --danger-hover: #fee2e2; --danger: #b91c1c;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #101014; --surface: #1b1b23; --ink: #eeeef3; --muted: #aaa6b5; --line: #35333f; --brand: #b8a6f0;
+    --surface-hover: #282731; --selected: #302840; --selection-line: #655281; --selection-hover: #403451;
+    --success-soft: #16362b; --success: #6ee7b7; --warning-soft: #382c16; --warning: #fcd34d;
+    --danger-soft: #3e2026; --danger-line: #72353f; --danger-hover: #512a32; --danger: #fca5a5;
+  }
   body { @apply m-0 bg-canvas font-sans text-ink antialiased; }
-  button { @apply cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-[13px] font-medium transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50; }
+  button { @apply cursor-pointer rounded-lg border border-line bg-surface px-3 py-2 text-[13px] font-medium transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50; }
   :is(button, a, input, select):focus-visible { @apply outline-2 outline-offset-2 outline-violet-400; }
-  input, select { @apply w-full min-w-0 rounded-lg border border-line bg-white p-2.5 text-[13px] text-ink; }
+  input, select { @apply w-full min-w-0 rounded-lg border border-line bg-surface p-2.5 text-[13px] text-ink; }
   input::placeholder { @apply text-stone-400; }
-  label { @apply flex flex-col gap-2 text-xs font-medium text-stone-600; }
+  label { @apply flex flex-col gap-2 text-xs font-medium text-muted; }
   form { @apply mt-4 flex flex-col gap-4; }
   h2 { @apply text-base font-semibold tracking-tight; }
   h3 { @apply text-sm font-semibold; }

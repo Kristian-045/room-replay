@@ -1,11 +1,12 @@
 use crate::{
+    downloads::Downloads,
     library::RecordingId,
     recorder::{Action, Recorder, Snapshot},
     rooms::{self, RoomId},
     subjects::SubjectId,
 };
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
@@ -18,10 +19,12 @@ use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 #[derive(Clone)]
 pub struct AppState {
     pub recorder: Recorder,
+    pub ffmpeg: String,
     pub allow_test_sources: bool,
 }
 
 pub fn router(state: AppState, media: PathBuf, frontend: PathBuf) -> Router {
+    let downloads = Downloads::new(media.clone(), state.ffmpeg.clone());
     Router::new()
         .route("/api/state", get(inspect))
         .route("/api/rooms", post(save_room))
@@ -30,6 +33,7 @@ pub fn router(state: AppState, media: PathBuf, frontend: PathBuf) -> Router {
         .route("/api/recordings/{id}/stop", post(stop))
         .route("/api/recordings/{id}/extend", post(extend))
         .route("/api/recordings/{id}/subject", post(assign_subject))
+        .route("/api/recordings/{id}/download", get(download))
         .nest_service("/media", ServeDir::new(media))
         .fallback_service(ServeDir::new(frontend))
         .layer(SetResponseHeaderLayer::overriding(
@@ -37,6 +41,21 @@ pub fn router(state: AppState, media: PathBuf, frontend: PathBuf) -> Router {
             axum::http::HeaderValue::from_static("no-store"),
         ))
         .with_state(state)
+        .layer(Extension(downloads))
+}
+
+async fn download(
+    State(state): State<AppState>,
+    Extension(downloads): Extension<Downloads>,
+    Path(id): Path<RecordingId>,
+) -> Result<Response, HttpError> {
+    let snapshot = state.recorder.execute(Action::Inspect).await?;
+    let recording = snapshot
+        .recordings
+        .iter()
+        .find(|recording| recording.id == id)
+        .ok_or_else(|| HttpError(anyhow::anyhow!("Recording not found")))?;
+    Ok(downloads.open(recording).await?)
 }
 
 struct HttpError(anyhow::Error);

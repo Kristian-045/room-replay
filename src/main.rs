@@ -19,13 +19,12 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let library = Library::open(&data)?;
     let media = library.media.clone();
-    let (recorder, worker) = Recorder::spawn(
-        library,
-        std::env::var("DVR_FFMPEG").unwrap_or_else(|_| "ffmpeg".into()),
-    );
+    let ffmpeg = std::env::var("DVR_FFMPEG").unwrap_or_else(|_| "ffmpeg".into());
+    let (recorder, worker) = Recorder::spawn(library, ffmpeg.clone());
     let app = http::router(
         AppState {
             recorder: recorder.clone(),
+            ffmpeg,
             allow_test_sources: std::env::var("DVR_ALLOW_TEST_SOURCES").as_deref() == Ok("1"),
         },
         media,

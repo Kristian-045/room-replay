@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Player, type PlaybackState } from './controller';
-  import { save, savedPosition } from './progress';
+  import { readSaved, save, savedPosition } from './progress';
   import { isActive, type Recording } from '../api';
 
   let { recording }: { recording: Recording } = $props();
@@ -18,10 +18,20 @@
   let fullscreen = $state(false);
   let visible = $state(true);
   let controlError = $state('');
+  const storedBrightness = Number(readSaved('brightness') ?? 100);
+  let brightness = $state(Number.isFinite(storedBrightness) ? Math.max(5, Math.min(100, storedBrightness)) : 100);
+  let showBrightness = $state(false);
+  $effect(() => save('brightness', String(brightness)));
+  let seekFeedback = $state<{ side: 'left' | 'right'; seconds: number } | null>(null);
+  let feedbackTimer: ReturnType<typeof setTimeout>;
+  let tapTimer: ReturnType<typeof setTimeout>;
+  let lastTap = { at: 0, side: '' };
+  let touchStart = { x: 0, y: 0, id: -1 };
+  let lastTouchAt = 0;
   let hideTimer: ReturnType<typeof setTimeout>;
   const length = $derived(Number.isFinite(duration) ? Math.max(0, duration) : recording.duration);
   const showControls = $derived(visible || paused || !!playback.error || !!controlError);
-  const controlButton = 'grid size-9 shrink-0 place-items-center rounded border-0 bg-transparent p-1.5 text-white hover:bg-white/15 focus-visible:outline-white';
+  const controlButton = 'grid size-8 shrink-0 sm:size-9 place-items-center rounded border-0 bg-transparent p-1.5 text-white hover:bg-white/15 focus-visible:outline-white';
   const textButton = 'shrink-0 rounded border-0 bg-transparent px-2 py-2 text-xs text-white hover:bg-white/15 focus-visible:outline-white';
 
   function time(value: number) {
@@ -34,7 +44,7 @@
     visible = true;
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      if (controls?.matches(':hover') || controls?.querySelector(':focus-visible, select:focus')) reveal();
+      if (showBrightness || controls?.matches(':hover') || controls?.querySelector(':focus-visible, select:focus')) reveal();
       else visible = false;
     }, 2500);
   }
@@ -47,6 +57,41 @@
   function seek(position: number) {
     if (length > 0) video.currentTime = Math.max(0, Math.min(position, length));
     reveal();
+  }
+  function pointerDown(event: PointerEvent) {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+    touchStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+  }
+  function pointerUp(event: PointerEvent) {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+    lastTouchAt = Date.now();
+    if (event.pointerId !== touchStart.id || Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 20 || !event.isPrimary) {
+      lastTap = { at: 0, side: '' };
+      clearTimeout(tapTimer);
+      return;
+    }
+    const box = frame.getBoundingClientRect();
+    const fraction = (event.clientX - box.left) / box.width;
+    const side = fraction < 0.35 ? 'left' : fraction > 0.65 ? 'right' : 'center';
+    const now = Date.now();
+    clearTimeout(tapTimer);
+    if (side !== 'center' && side === lastTap.side && now - lastTap.at < 350) {
+      seek(video.currentTime + (side === 'left' ? -10 : 10));
+      seekFeedback = { side, seconds: seekFeedback?.side === side ? seekFeedback.seconds + 10 : 10 };
+      clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => seekFeedback = null, 800);
+    } else {
+      tapTimer = setTimeout(() => {
+        if (paused) void togglePlay();
+        else if (visible) { clearTimeout(hideTimer); visible = false; }
+        else reveal();
+      }, 350);
+    }
+    lastTap = { at: now, side };
+  }
+  function surfaceClick(event: MouseEvent) {
+    // Touch is handled on pointerup; ignore its synthetic click.
+    if (event.detail === 0 || Date.now() - lastTouchAt > 700) void togglePlay();
   }
   async function toggleFullscreen() {
     controlError = '';
@@ -101,6 +146,8 @@
       video.removeEventListener('seeked', persist);
       window.removeEventListener('pagehide', persist);
       clearTimeout(hideTimer);
+      clearTimeout(tapTimer);
+      clearTimeout(feedbackTimer);
       document.removeEventListener('fullscreenchange', fullscreenChanged);
       controller?.destroy();
     };
@@ -109,15 +156,28 @@
 
 <svelte:window onkeydown={keyboard} />
 <div class="px-3 pb-3 sm:px-5 sm:pb-5">
-  <div bind:this={frame} role="group" aria-label="Video player" data-player-frame class="relative aspect-video w-full overflow-hidden rounded-lg bg-black text-white [&:fullscreen]:h-screen [&:fullscreen]:w-screen [&:fullscreen]:rounded-none" onpointermove={reveal} onpointerdown={reveal} onfocusin={reveal}>
+  <div bind:this={frame} role="group" aria-label="Video player" data-player-frame class="relative aspect-video w-full overflow-hidden rounded-lg bg-black text-white [&:fullscreen]:h-screen [&:fullscreen]:w-screen [&:fullscreen]:rounded-none" onpointermove={event => { if (event.pointerType === 'mouse') reveal(); }} onfocusin={reveal}>
     <!-- The source does not provide captions. -->
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video class="h-full w-full object-contain" bind:this={video} bind:paused bind:currentTime bind:duration bind:volume bind:muted playsinline preload="auto" onplay={reveal}></video>
-    <button class="absolute inset-0 grid h-full w-full place-items-center rounded-none border-0 bg-transparent p-0 text-white hover:bg-transparent focus-visible:outline-none" aria-label={paused ? 'Play video' : 'Pause video'} onclick={togglePlay}>
+    <video class="h-full w-full object-contain" style:filter={`brightness(${brightness / 100})`} bind:this={video} bind:paused bind:currentTime bind:duration bind:volume bind:muted playsinline preload="auto" onplay={reveal}></video>
+    <button class="absolute inset-0 grid h-full w-full place-items-center rounded-none border-0 bg-transparent p-0 text-white hover:bg-transparent focus-visible:outline-none" aria-label={paused ? 'Play video' : 'Pause video'} style="touch-action: manipulation" onpointerdown={pointerDown} onpointerup={pointerUp} onpointercancel={() => { touchStart.id = -1; clearTimeout(tapTimer); lastTap = { at: 0, side: '' }; }} onclick={surfaceClick}>
       {#if paused}<span class="grid size-14 place-items-center rounded-full bg-black/60"><svg aria-hidden="true" viewBox="0 0 24 24" class="ml-1 size-7 fill-current"><path d="M7 4v16l14-8z" /></svg></span>{/if}
     </button>
+    {#if seekFeedback}
+      <div aria-hidden="true" data-seek-feedback class={["pointer-events-none absolute top-1/3 grid size-20 place-content-center rounded-full bg-black/60 text-center text-sm", seekFeedback.side === 'left' ? 'left-[8%]' : 'right-[8%]']}>
+        <span class="text-xl">{seekFeedback.side === 'left' ? '‹‹' : '››'}</span><span>{seekFeedback.seconds} seconds</span>
+      </div>
+      <span role="status" class="sr-only">{seekFeedback.side === 'left' ? 'Back' : 'Forward'} {seekFeedback.seconds} seconds</span>
+    {/if}
     {#if playback.error || controlError}<p role="alert" class="absolute inset-x-3 top-3 rounded bg-red-950/90 px-3 py-2 text-xs text-white">{playback.error || controlError}</p>{/if}
-    <div bind:this={controls} data-player-controls class={["absolute inset-x-0 bottom-0 bg-linear-to-t from-black/95 via-black/75 to-transparent px-2 pb-2 pt-8 transition-opacity duration-200 sm:px-3", showControls ? 'opacity-100' : 'pointer-events-none opacity-0']}>
+      {#if showBrightness}
+        <div class="absolute inset-x-3 top-3 flex items-center gap-3 rounded bg-black/90 px-3 py-2">
+          <label for="player-brightness" class="shrink-0 text-xs text-white">Brightness</label>
+          <input id="player-brightness" aria-label="Video brightness" aria-valuetext={`${brightness}%`} type="range" min="5" max="100" step="1" bind:value={brightness} oninput={reveal} class="h-5 min-w-0 cursor-pointer border-0 bg-transparent p-0 accent-violet-400" />
+          <span class="min-w-8 text-right text-xs tabular-nums">{brightness}%</span>
+        </div>
+      {/if}
+    <div bind:this={controls} role="group" aria-label="Player controls" onpointerdown={reveal} data-player-controls class={["absolute inset-x-0 bottom-0 bg-linear-to-t from-black/95 via-black/75 to-transparent px-2 pb-2 pt-8 transition-opacity duration-200 sm:px-3", showControls ? 'opacity-100' : 'pointer-events-none opacity-0']}>
       {#if playback.message}<p role="status" class="mb-1 text-xs text-white/90">{playback.message}</p>{/if}
       <input aria-label="Seek" aria-valuetext={`${time(currentTime)} of ${time(length)}`} type="range" min="0" max={Math.max(length, 0.01)} step="0.1" value={currentTime} disabled={length <= 0} oninput={event => seek(Number(event.currentTarget.value))} class="block h-5 w-full cursor-pointer rounded-none border-0 bg-transparent p-0 accent-violet-400 focus-visible:outline-white" />
       <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 sm:gap-x-2">
@@ -132,9 +192,12 @@
         {#if isActive(recording)}<button class={textButton} onclick={() => { controller?.goLive(); reveal(); }}>Go live</button>{/if}
         <div role="group" aria-label="Playback speed" class="flex shrink-0 items-center rounded bg-black/50">
           <button class={controlButton} aria-label="Decrease speed" title="Slower (↓)" disabled={playback.speed <= speeds[0]} onclick={() => changeSpeed(-1)}>−</button>
-          <span class="min-w-9 text-center text-xs tabular-nums" aria-live="polite">{playback.speed}×</span>
+          <span class="min-w-7 text-center sm:min-w-9 text-xs tabular-nums" aria-live="polite">{playback.speed}×</span>
           <button class={controlButton} aria-label="Increase speed" title="Faster (↑)" disabled={playback.speed >= speeds[speeds.length - 1]} onclick={() => changeSpeed(1)}>+</button>
         </div>
+        <button class={controlButton} aria-label="Adjust brightness" aria-expanded={showBrightness} title="Video brightness" onclick={() => { showBrightness = !showBrightness; reveal(); }}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 fill-none stroke-current" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
+        </button>
         <button class={controlButton} aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title="Fullscreen (F)" onclick={toggleFullscreen}>
           <svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 fill-none stroke-current" stroke-width="2">{#if fullscreen}<path d="M9 3v6H3m18 0h-6V3M3 15h6v6m6 0v-6h6" />{:else}<path d="M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6" />{/if}</svg>
         </button>
